@@ -10,20 +10,33 @@ A personal Android toolbox for rooted devices, built feature by feature.
 
 | Tool | Description |
 | --- | --- |
-| App Systemizer | Systemize user apps (priv-app or app) and de-systemize system apps, via a module in `/data/adb/modules`. Applies on reboot, revertible. |
+| App Systemizer | Systemize user apps (priv-app or app) and de-systemize system apps (keep as user app, or remove completely), all through one module. Applies on reboot, revertible. |
 | Work Profile Apps | Enable any installed app in the work profile (or another user) with `pm install-existing`, no store needed. |
 | Root Shell | Run commands as root and view the output |
 
 ### How systemizing works
 
-- **Systemize:** creates module `systools_sys_<package>`, which mounts a copy of the APK(s) (and any extracted native libs)
-  at `/system/priv-app/<package>` or `/system/app/<package>`. For priv-app, the privileged permissions the app
-  requests are allowlisted in `/system/etc/permissions` so the device doesn't bootloop on allowlist enforcement.
-  The `/data` install stays as an update of the new "system" app, so data and store updates are kept.
-- **De-systemize:** creates module `systools_desys_<package>`, which hides the app's system directory with a `.replace`
-  marker. A system app that was never updated is first installed as a user update so it survives.
-- **Revert:** flags the module for removal on next boot (or deletes it right away if it was never applied).
-  The modules also show up in KernelSU/Magisk/APatch, so you can remove them there if needed.
+Everything lives in **one** module, `/data/adb/modules/systools` (shown as "System Tools" in
+KernelSU/Magisk/APatch). Its `systools.list` records each change:
+
+- **Systemize:** a copy of the APK(s) (and any extracted native libs) is mounted at `/system/priv-app/<package>`
+  or `/system/app/<package>`. For priv-app, the privileged permissions the app requests are allowlisted in
+  `/system/etc/permissions` so the device doesn't bootloop on allowlist enforcement. The `/data` install stays
+  as an update of the new "system" app, so data and store updates are kept.
+- **De-systemize, keep user app:** the app's system directory is hidden (`.replace` marker, or a whiteout for a
+  bare `.apk`). A system app that was never updated is first installed as a user update so it survives with its data.
+- **De-systemize, remove completely:** the system copy is hidden the same way and the app and its data are
+  deleted. If a user copy is left over (an updated system app), the module's `service.sh` uninstalls it once
+  after boot.
+- **Revert / restore:** the entry is dropped from the list.
+
+Every change rebuilds the module from the list and stages it in `/data/adb/modules_update/systools`, the root
+managers' own update path, so the mounted module is never edited in place and the swap happens on reboot. Undoing a
+pending change before rebooting just discards the staged update. If something goes wrong, deleting
+`/data/adb/modules/systools` (e.g. from recovery) restores everything.
+
+Builds before 0.3 created one module per app (`systools_sys_*`, `systools_desys_*`). They keep working, and the
+first change made with a newer build folds them into `systools` and flags the old ones for removal.
 
 ## Building
 
