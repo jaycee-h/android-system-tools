@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher icon: light blue, brightening from top-left to bottom-right. -->
+    <color name="ic_launcher_bg_start">#4FA6F2</color>
+    <color name="ic_launcher_bg_end">#8FCDFB</color>
+    <color name="ic_launcher_gear">#FFFFFF</color>
+    <color name="ic_launcher_gear_shadow">#2E0D3B66</color>
+</resources>

@@ -8,11 +8,15 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.RestartAlt
@@ -29,6 +33,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -49,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -96,7 +102,7 @@ fun SystemizerScreen(onBack: () -> Unit, viewModel: SystemizerViewModel = viewMo
             LoadingState(Modifier.padding(padding))
             return@ToolScaffold
         }
-        val apps = state.visibleApps
+        val rows = state.visibleRows
         LazyColumn(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding() + 16.dp),
             verticalArrangement = Arrangement.spacedBy(GroupGap),
@@ -120,7 +126,7 @@ fun SystemizerScreen(onBack: () -> Unit, viewModel: SystemizerViewModel = viewMo
                     }
                 }
             }
-            if (apps.isEmpty()) {
+            if (rows.isEmpty()) {
                 item {
                     EmptyState(
                         icon = if (state.filter == AppFilter.Managed) Icons.Filled.Apps else Icons.Filled.SearchOff,
@@ -129,36 +135,36 @@ fun SystemizerScreen(onBack: () -> Unit, viewModel: SystemizerViewModel = viewMo
                     )
                 }
             }
-            itemsIndexed(apps, key = { _, app -> app.packageName }) { index, app ->
-                val status = state.status(app)
+            itemsIndexed(rows, key = { _, row -> row.packageName }) { index, row ->
+                val status = state.status(row)
                 GroupedListItem(
                     index = index,
-                    count = apps.size,
-                    headline = { Text(app.label) },
+                    count = rows.size,
+                    headline = { Text(row.label) },
                     supporting = {
                         Text(
-                            if (state.filter == AppFilter.Managed) status.label else app.packageName,
+                            if (state.filter == AppFilter.Managed) status.label else row.packageName,
                             color = if (status.pending) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     },
-                    leading = { AppIcon(app) },
-                    onClick = { selected = app.packageName },
+                    leading = { RowIcon(row) },
+                    onClick = { selected = row.packageName },
                     modifier = Modifier.animateItem(),
                 )
             }
         }
     }
 
-    state.apps.firstOrNull { it.packageName == selected }?.let { app ->
+    state.rows.firstOrNull { it.packageName == selected }?.let { row ->
         AppSheet(
-            app = app,
-            status = state.status(app),
+            row = row,
+            status = state.status(row),
             busy = state.busy,
             onDismiss = { selected = null },
-            onSystemize = { privileged -> viewModel.systemize(app, privileged) },
-            onDesystemize = { viewModel.desystemize(app) },
-            onRevert = { viewModel.revert(app) },
-            onCancelRevert = { viewModel.cancelRevert(app) },
+            onSystemize = { privileged -> viewModel.systemize(row, privileged) },
+            onDesystemize = { keepUserApp -> viewModel.desystemize(row, keepUserApp) },
+            onRevert = { viewModel.revert(row) },
+            onKeep = { viewModel.keep(row) },
         )
     }
 
@@ -179,32 +185,33 @@ fun SystemizerScreen(onBack: () -> Unit, viewModel: SystemizerViewModel = viewMo
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun AppSheet(
-    app: InstalledApp,
+    row: AppRow,
     status: AppStatus,
     busy: Boolean,
     onDismiss: () -> Unit,
     onSystemize: (privileged: Boolean) -> Unit,
-    onDesystemize: () -> Unit,
+    onDesystemize: (keepUserApp: Boolean) -> Unit,
     onRevert: () -> Unit,
-    onCancelRevert: () -> Unit,
+    onKeep: () -> Unit,
 ) {
+    val app = row.app
     var privileged by rememberSaveable { mutableStateOf(true) }
     var confirmDesystemize by remember { mutableStateOf(false) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberBottomSheetState(SheetValue.Hidden, setOf(SheetValue.Hidden, SheetValue.Expanded))) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                AppIcon(app, size = 56.dp)
+                RowIcon(row, size = 56.dp)
                 Column(Modifier.padding(start = 16.dp)) {
-                    Text(app.label, style = MaterialTheme.typography.headlineSmall)
-                    Text(app.packageName, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(row.label, style = MaterialTheme.typography.headlineSmall)
+                    Text(row.packageName, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Spacer(Modifier.height(20.dp))
-            val details = listOf(
+            val details = listOfNotNull(
                 "Status" to status.label,
-                "Version" to "${app.versionName ?: "?"} (${app.versionCode})",
-                "Code path" to app.sourceDir.substringBeforeLast('/'),
+                app?.let { "Version" to "${it.versionName ?: "?"} (${it.versionCode})" },
+                app?.let { "Code path" to it.sourceDir.substringBeforeLast('/') },
             )
             details.forEachIndexed { index, (label, value) ->
                 GroupedListItem(
@@ -251,34 +258,91 @@ private fun AppSheet(
                 }
                 AppStatus.System -> {
                     Text(
-                        "Hides the system copy so this becomes a normal user app." +
-                            if (app.isUpdatedSystem) " Its installed update is kept." else " A user copy is installed first so the app and its data stay.",
+                        "Hides the system copy of this app. You can keep it as a normal user app or remove it completely.",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(bottom = 12.dp),
                     )
                     Button(onClick = { confirmDesystemize = true }, modifier = Modifier.fillMaxWidth()) { Text("De-systemize") }
                 }
-                AppStatus.SystemizePending, AppStatus.DesystemizePending ->
+                AppStatus.SystemizePending, AppStatus.DesystemizePending, AppStatus.RemovePending ->
                     FilledTonalButton(onClick = onRevert, modifier = Modifier.fillMaxWidth()) { Text("Cancel pending change") }
                 AppStatus.Systemized, AppStatus.Desystemized ->
                     FilledTonalButton(onClick = onRevert, modifier = Modifier.fillMaxWidth()) { Text("Revert") }
+                AppStatus.Removed ->
+                    FilledTonalButton(onClick = onRevert, modifier = Modifier.fillMaxWidth()) { Text("Restore system app") }
                 AppStatus.RevertPending ->
-                    FilledTonalButton(onClick = onCancelRevert, modifier = Modifier.fillMaxWidth()) { Text("Keep current state") }
+                    FilledTonalButton(onClick = onKeep, modifier = Modifier.fillMaxWidth()) { Text("Keep current state") }
             }
         }
     }
 
-    if (confirmDesystemize) {
-        AlertDialog(
-            onDismissRequest = { confirmDesystemize = false },
-            title = { Text("De-systemize ${app.label}?") },
-            text = {
-                Text("Core system apps can break the system if they lose system status. You can revert from this screen, or by removing the module in your root manager.")
-            },
-            confirmButton = {
-                TextButton(onClick = { confirmDesystemize = false; onDesystemize() }) { Text("De-systemize") }
-            },
-            dismissButton = { TextButton(onClick = { confirmDesystemize = false }) { Text("Cancel") } },
+    if (confirmDesystemize && app != null) {
+        DesystemizeDialog(
+            app = app,
+            onDismiss = { confirmDesystemize = false },
+            onConfirm = { keepUserApp -> confirmDesystemize = false; onDesystemize(keepUserApp) },
         )
+    }
+}
+
+@Composable
+private fun DesystemizeDialog(app: InstalledApp, onDismiss: () -> Unit, onConfirm: (keepUserApp: Boolean) -> Unit) {
+    var keepUserApp by rememberSaveable { mutableStateOf(true) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("De-systemize ${app.label}?") },
+        text = {
+            Column(Modifier.selectableGroup()) {
+                ChoiceRow(
+                    selected = keepUserApp,
+                    title = "Keep as user app",
+                    description = if (app.isUpdatedSystem) "Its installed update stays, with all app data." else "A user copy is installed first, so the app and its data stay.",
+                    onClick = { keepUserApp = true },
+                )
+                ChoiceRow(
+                    selected = !keepUserApp,
+                    title = "Remove completely",
+                    description = "The app and all its data are deleted after the reboot.",
+                    onClick = { keepUserApp = false },
+                )
+                Text(
+                    "Core system apps can break the system without them. Either way you can restore it here, or by removing the System Tools module in your root manager.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(keepUserApp) }) { Text(if (keepUserApp) "De-systemize" else "Remove") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun ChoiceRow(selected: Boolean, title: String, description: String, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.Top,
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, onClick = onClick, role = Role.RadioButton)
+            .padding(vertical = 8.dp),
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Column(Modifier.padding(start = 12.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** App icon, or a generic one for packages that aren't installed (removed apps). */
+@Composable
+private fun RowIcon(row: AppRow, size: Dp = 40.dp) {
+    if (row.app != null) {
+        AppIcon(row.app, size = size)
+    } else {
+        Icon(Icons.Filled.Android, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(size))
     }
 }
