@@ -36,8 +36,8 @@ Both build types are signed with the release key in `signing/` (kept in this pri
 on purpose), and `versionCode` is the git commit count, so any newer build installs over an
 older one. Don't lose or change the key, or updates will need an uninstall first.
 
-Every push also builds both APKs on GitHub Actions; download them from the run's
-`system-tools-apk` artifact.
+Every push builds on GitHub Actions and publishes the release APK to the repo's
+**latest** release (Releases > latest), replacing the previous one.
 
 ## Adding a tool
 
