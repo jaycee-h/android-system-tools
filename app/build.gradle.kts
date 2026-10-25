@@ -1,7 +1,21 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+// Release key lives in the (private) repo so every build, local or CI, is
+// signed identically and can update the installed app in place.
+val signingProps = Properties().apply {
+    rootProject.file("signing/keystore.properties").inputStream().use(::load)
+}
+
+// Commit count gives a monotonically increasing versionCode; CI checks out full history.
+val gitCommitCount = providers.exec {
+    commandLine("git", "rev-list", "--count", "HEAD")
+    isIgnoreExitValue = true
+}.standardOutput.asText.map { it.trim().toIntOrNull() ?: 1 }
 
 android {
     namespace = "com.pagnchanak.systemtools"
@@ -11,8 +25,17 @@ android {
         applicationId = "com.pagnchanak.systemtools"
         minSdk = 29
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = gitCommitCount.get()
+        versionName = "0.2.0"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = rootProject.file("signing/${signingProps.getProperty("storeFile")}")
+            storePassword = signingProps.getProperty("storePassword")
+            keyAlias = signingProps.getProperty("keyAlias")
+            keyPassword = signingProps.getProperty("keyPassword")
+        }
     }
 
     buildTypes {
@@ -20,8 +43,11 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Personal-use app: sign release with the debug key so it installs without extra setup.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
+        }
+        debug {
+            // Same key as release so debug and release builds can replace each other.
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

@@ -4,8 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
- * A single feature of the app. To add a new tool, implement its screen and
- * register it in [ToolRegistry].
+ * A single feature of the app. To add a new tool, implement its screen (using
+ * ToolScaffold for the frame) and register it in [ToolRegistry].
  */
 data class Tool(
     /** Stable id, used as the navigation route segment. */
@@ -14,5 +14,5 @@ data class Tool(
     val description: String,
     val icon: ImageVector,
     val requiresRoot: Boolean = true,
-    val content: @Composable () -> Unit,
+    val content: @Composable (onBack: () -> Unit) -> Unit,
 )

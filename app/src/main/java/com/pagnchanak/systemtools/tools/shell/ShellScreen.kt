@@ -17,10 +17,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,9 +39,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.pagnchanak.systemtools.ui.components.ToolScaffold
 
 @Composable
-fun ShellScreen(viewModel: ShellViewModel = viewModel()) {
+fun ShellScreen(onBack: () -> Unit, viewModel: ShellViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var input by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -51,7 +56,8 @@ fun ShellScreen(viewModel: ShellViewModel = viewModel()) {
         input = ""
     }
 
-    Column(Modifier.fillMaxSize().imePadding()) {
+    ToolScaffold(title = "Root Shell", onBack = onBack) { padding ->
+    Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
         if (state.running) LinearProgressIndicator(Modifier.fillMaxWidth())
         SelectionContainer(Modifier.weight(1f)) {
             LazyColumn(state = listState, contentPadding = PaddingValues(12.dp)) {
@@ -65,7 +71,7 @@ fun ShellScreen(viewModel: ShellViewModel = viewModel()) {
             IconButton(onClick = viewModel::clear) {
                 Icon(Icons.Filled.DeleteSweep, contentDescription = "Clear")
             }
-            OutlinedTextField(
+            TextField(
                 value = input,
                 onValueChange = { input = it },
                 placeholder = { Text("Command") },
@@ -73,12 +79,15 @@ fun ShellScreen(viewModel: ShellViewModel = viewModel()) {
                 textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
                 keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { submit() }),
+                shape = CircleShape,
+                colors = TextFieldDefaults.colors(focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
                 modifier = Modifier.weight(1f),
             )
-            IconButton(onClick = ::submit, enabled = input.isNotBlank() && !state.running) {
+            FilledIconButton(onClick = ::submit, enabled = input.isNotBlank() && !state.running) {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Run")
             }
         }
+    }
     }
 }
 
