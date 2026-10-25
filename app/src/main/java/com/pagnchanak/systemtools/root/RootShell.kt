@@ -4,6 +4,9 @@ import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/** Single-quotes [value] for safe interpolation into a shell command. */
+fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+
 /** Result of running one or more shell commands. */
 data class CommandResult(
     val code: Int,
@@ -11,6 +14,9 @@ data class CommandResult(
     val err: List<String>,
 ) {
     val isSuccess: Boolean get() = code == 0
+
+    /** stdout and stderr joined, for showing to the user. */
+    val output: String get() = (out + err).joinToString("\n").trim()
 }
 
 /** How the app currently stands with respect to root access. */
@@ -46,6 +52,9 @@ object RootShell {
         val result = Shell.cmd(*commands).to(ArrayList(), ArrayList()).exec()
         CommandResult(result.code, result.out, result.err)
     }
+
+    /** Reboots the device normally. */
+    suspend fun reboot(): CommandResult = run("svc power reboot || reboot")
 
     /** Best-effort detection of the root solution (Magisk, KernelSU, APatch...). */
     private fun provider(): String? {
