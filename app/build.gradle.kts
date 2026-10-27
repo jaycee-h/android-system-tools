@@ -1,14 +1,6 @@
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-}
-
-// Release key lives in the (private) repo so every build, local or CI, is
-// signed identically and can update the installed app in place.
-val signingProps = Properties().apply {
-    rootProject.file("signing/keystore.properties").inputStream().use(::load)
 }
 
 // CI passes VERSION_CODE (the run number, shared by both channels), VERSION_NAME and CHANNEL.
@@ -34,12 +26,16 @@ android {
         buildConfigField("String", "GITHUB_REPO", "\"pagnchanak/android-system-tools\"")
     }
 
+    // CI writes the keystore from repo secrets (KEYSTORE_BASE64, KEYSTORE_PASSWORD). Without them,
+    // local builds use the debug key, so they can't update a CI-signed install in place.
+    val ksFile = providers.environmentVariable("KEYSTORE_FILE").orNull?.let(::file)?.takeIf { it.exists() }
     signingConfigs {
-        create("release") {
-            storeFile = rootProject.file("signing/${signingProps.getProperty("storeFile")}")
-            storePassword = signingProps.getProperty("storePassword")
-            keyAlias = signingProps.getProperty("keyAlias")
-            keyPassword = signingProps.getProperty("keyPassword")
+        if (ksFile != null) create("release") {
+            val password = providers.environmentVariable("KEYSTORE_PASSWORD").get()
+            storeFile = ksFile
+            storePassword = password
+            keyAlias = providers.environmentVariable("KEY_ALIAS").orNull ?: "systemtools"
+            keyPassword = providers.environmentVariable("KEY_PASSWORD").orNull?.ifBlank { null } ?: password
         }
     }
 
@@ -48,11 +44,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("release")
-        }
-        debug {
-            // Same key as release so debug and release builds can replace each other.
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 

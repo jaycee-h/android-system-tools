@@ -45,9 +45,7 @@ first change made with a newer build folds them into `systools` and flags the ol
 ./gradlew assembleDebug     # app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Both build types are signed with the release key in `signing/` (kept in this private repo
-on purpose), and `versionCode` is the git commit count, so any newer build installs over an
-older one. Don't lose or change the key, or updates will need an uninstall first.
+Release builds are signed in CI with a key held in repo secrets (`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, optional `KEY_PASSWORD`; alias `systemtools`). Local builds fall back to the debug key and cannot update a CI-signed install. Keep the key backed up and never change it, or updates will need an uninstall first.
 
 ## Branches, releases and updates
 

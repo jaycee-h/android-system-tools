@@ -16,7 +16,8 @@ Personal Android toolbox for rooted devices. Package `com.pagnchanak.systemtools
 - **Stable:** bump `version.txt`, write `release-notes.md`, merge to `main` -> CI creates tag `v<version>` and the
   stable release (marked Latest).
 - `versionCode` = workflow run number (shared by both channels); local builds use the commit count.
+- Signing: repo secrets `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD` (alias `systemtools`, optional `KEY_PASSWORD`). The repo is public: never commit a keystore or passwords.
 - `.github/workflows/cleanup.yml` deletes leftover artifacts and old runs after each build and weekly.
 - In-app updates (`update/`, `ui/settings/`): the app follows the channel it was built from, or the one chosen in
   Settings. It reads the release via the GitHub API and falls back to `update.json` (SHA-256 verified).
-  This only works while the repo is public: private-repo releases need a login.
+  
