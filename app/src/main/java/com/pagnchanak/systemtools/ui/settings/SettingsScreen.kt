@@ -30,7 +30,8 @@ import com.pagnchanak.systemtools.update.Updater
 
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
-    val prefs = remember { UpdatePrefs(LocalContext.current) }
+    val context = LocalContext.current
+    val prefs = remember { UpdatePrefs(context) }
     var channel by remember { mutableStateOf(prefs.channel) }
     var autoCheck by remember { mutableStateOf(prefs.autoCheck) }
     val channels = listOf(Updater.CHANNEL_STABLE to "Stable", Updater.CHANNEL_DEV to "Dev")
