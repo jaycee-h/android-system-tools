@@ -15,10 +15,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
@@ -53,13 +55,22 @@ private val toolShapes = listOf(
 @Composable
 fun HomeScreen(
     onOpenTool: (Tool) -> Unit,
+    onOpenSettings: () -> Unit,
     viewModel: HomeViewModel = viewModel(),
 ) {
     val rootStatus by viewModel.rootStatus.collectAsStateWithLifecycle()
     val hasRoot = rootStatus is RootStatus.Granted
     val tools = ToolRegistry.tools
 
-    ToolScaffold(title = "System Tools", onBack = null) { padding ->
+    ToolScaffold(
+        title = "System Tools",
+        onBack = null,
+        actions = {
+            IconButton(onClick = onOpenSettings) {
+                Icon(Icons.Filled.Settings, contentDescription = "Settings and updates")
+            }
+        },
+    ) { padding ->
         LazyColumn(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding() + 16.dp),
             verticalArrangement = Arrangement.spacedBy(GroupGap),

@@ -49,8 +49,17 @@ Both build types are signed with the release key in `signing/` (kept in this pri
 on purpose), and `versionCode` is the git commit count, so any newer build installs over an
 older one. Don't lose or change the key, or updates will need an uninstall first.
 
-Every push builds on GitHub Actions and publishes the release APK to the repo's
-**latest** release (Releases > latest), replacing the previous one.
+## Branches, releases and updates
+
+- Work happens on `dev`. Every push to `dev` builds and replaces the rolling **dev** pre-release.
+- To cut a stable release, bump `version.txt`, update `release-notes.md` and merge `dev` into `main`.
+  CI tags `v<version>` and publishes it as the **Latest** release.
+- Releases carry the APK and an `update.json`. No workflow artifacts are kept, and
+  `cleanup.yml` removes leftovers and old runs so Actions storage stays near zero.
+- **In-app updates:** Settings (gear icon on the home screen) lets you pick the Stable or Dev channel,
+  turn on the check at launch, and check/install manually. The app finds the release through the GitHub API
+  and falls back to `update.json` when the API limit is reached; the APK checksum is verified before installing.
+  Updates need the repo's releases to be publicly downloadable.
 
 ## Adding a tool
 

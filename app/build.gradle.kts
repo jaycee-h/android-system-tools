@@ -11,7 +11,8 @@ val signingProps = Properties().apply {
     rootProject.file("signing/keystore.properties").inputStream().use(::load)
 }
 
-// Commit count gives a monotonically increasing versionCode; CI checks out full history.
+// CI passes VERSION_CODE (the run number, shared by both channels), VERSION_NAME and CHANNEL.
+// Local builds fall back to the commit count and version.txt.
 val gitCommitCount = providers.exec {
     commandLine("git", "rev-list", "--count", "HEAD")
     isIgnoreExitValue = true
@@ -25,8 +26,12 @@ android {
         applicationId = "com.pagnchanak.systemtools"
         minSdk = 29
         targetSdk = 37
-        versionCode = gitCommitCount.get()
-        versionName = "0.3.0"
+        versionCode = providers.environmentVariable("VERSION_CODE").map(String::toInt).orNull ?: gitCommitCount.get()
+        versionName = providers.environmentVariable("VERSION_NAME").orNull
+            ?: rootProject.file("version.txt").readText().trim()
+        // Release channel this build belongs to; the updater follows it by default.
+        buildConfigField("String", "CHANNEL", "\"${providers.environmentVariable("CHANNEL").orNull ?: "dev"}\"")
+        buildConfigField("String", "GITHUB_REPO", "\"pagnchanak/android-system-tools\"")
     }
 
     signingConfigs {

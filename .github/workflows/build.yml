@@ -1,12 +1,29 @@
-name: Build
+name: Build APK
+
+# push to dev     -> rolling "dev" pre-release (replaced every time)
+# push to main    -> if version.txt holds a version with no release yet (e.g. 0.3.0), publish the
+#                    stable release "v0.3.0" (tag created by CI, notes from release-notes.md);
+#                    otherwise build check only
+# push tag v1.2.3 -> stable release "v1.2.3" (also supported)
+# pull request    -> build check only
+#
+# Each release carries the APK plus update.json. The app reads the release through the
+# GitHub API first and falls back to update.json via the release download URL, which isn't
+# subject to the API rate limit. No workflow artifacts are uploaded (saves Actions storage).
 
 on:
   push:
+    branches: [dev, main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write # publish the "latest" release
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -14,7 +31,32 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # versionCode is the commit count
+          fetch-depth: 0 # tags are needed to tell whether version.txt is already released
+
+      - name: Version
+        run: |
+          V="$(tr -d ' \n\r' < version.txt 2>/dev/null || echo 0.0.0)"
+          PUBLISH=false
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "CHANNEL=stable" >> "$GITHUB_ENV"
+            echo "VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+            echo "RELEASE_TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+            PUBLISH=true
+          elif [[ "$GITHUB_REF" == refs/heads/main ]] && ! git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+            echo "CHANNEL=stable" >> "$GITHUB_ENV"
+            echo "VERSION_NAME=$V" >> "$GITHUB_ENV"
+            echo "RELEASE_TAG=v$V" >> "$GITHUB_ENV"
+            PUBLISH=true
+          else
+            echo "CHANNEL=dev" >> "$GITHUB_ENV"
+            echo "VERSION_NAME=$V-dev.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+            echo "RELEASE_TAG=dev" >> "$GITHUB_ENV"
+            [[ "$GITHUB_REF" == refs/heads/dev && "$GITHUB_EVENT_NAME" == push ]] && PUBLISH=true
+          fi
+          [[ "$GITHUB_EVENT_NAME" == push ]] || PUBLISH=false
+          echo "PUBLISH=$PUBLISH" >> "$GITHUB_ENV"
+          # One counter for both channels, so any newer build installs over an older one.
+          echo "VERSION_CODE=$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v6
         with:
@@ -24,19 +66,62 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
 
       - name: Build and lint
-        run: ./gradlew assembleDebug assembleRelease lintDebug
+        run: ./gradlew assembleRelease lintDebug
 
-      # Releases don't count against the Actions artifact storage quota.
-      - name: Publish "latest" release
-        if: github.event_name != 'pull_request'
+      - name: Name the APK
+        run: |
+          mkdir -p dist
+          APK="SystemTools-$VERSION_NAME.apk"
+          cp app/build/outputs/apk/release/app-release.apk "dist/$APK"
+          echo "APK=$APK" >> "$GITHUB_ENV"
+          echo "SHA256=$(sha256sum "dist/$APK" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "APK_SIZE=$(stat -c%s "dist/$APK")" >> "$GITHUB_ENV"
+
+      - name: Release notes and update.json
+        if: env.PUBLISH == 'true'
+        run: |
+          if [ "$CHANNEL" = dev ]; then
+            CHANGES="$(git log -1 --pretty=format:'%s%n%n%b' "$GITHUB_SHA")"
+          else
+            CHANGES=""
+            [[ "$GITHUB_REF" == refs/tags/v* ]] && CHANGES="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME")"
+            [ -z "$CHANGES" ] && [ -f release-notes.md ] && CHANGES="$(cat release-notes.md)"
+            [ -z "$CHANGES" ] && CHANGES="Stable release $VERSION_NAME"
+          fi
+          printf '%s\n' "$CHANGES" > dist/notes.md
+          printf '\n<!-- versionCode: %s versionName: %s sha256: %s -->\n' "$VERSION_CODE" "$VERSION_NAME" "$SHA256" >> dist/notes.md
+          jq -n \
+            --arg channel "$CHANNEL" \
+            --argjson versionCode "$VERSION_CODE" \
+            --arg versionName "$VERSION_NAME" \
+            --arg apkUrl "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$APK" \
+            --argjson apkSize "$APK_SIZE" \
+            --arg sha256 "$SHA256" \
+            --arg notes "$CHANGES" \
+            --arg commit "$GITHUB_SHA" \
+            '{channel:$channel, versionCode:$versionCode, versionName:$versionName, apkUrl:$apkUrl,
+              apkSize:$apkSize, sha256:$sha256, notes:$notes, commit:$commit}' > dist/update.json
+          cat dist/update.json
+
+      - name: Publish dev release
+        if: env.PUBLISH == 'true' && env.CHANNEL == 'dev'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          build=$(git rev-list --count HEAD)
-          apk="SystemTools-build${build}.apk"
-          cp app/build/outputs/apk/release/app-release.apk "$apk"
-          gh release delete latest --cleanup-tag --yes || true
-          gh release create latest "$apk" \
+          gh release delete dev --cleanup-tag --yes || true
+          gh release create dev "dist/$APK" dist/update.json \
+            --prerelease --latest=false \
             --target "$GITHUB_SHA" \
-            --title "System Tools build $build" \
-            --notes "Build $build from \`${GITHUB_REF_NAME}\` at ${GITHUB_SHA::7}. Installs over any earlier build."
+            --title "Dev build $VERSION_NAME" \
+            --notes-file dist/notes.md
+
+      - name: Publish stable release
+        if: env.PUBLISH == 'true' && env.CHANNEL == 'stable'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" "dist/$APK" dist/update.json \
+            --target "$GITHUB_SHA" \
+            --latest \
+            --title "System Tools $VERSION_NAME" \
+            --notes-file dist/notes.md
